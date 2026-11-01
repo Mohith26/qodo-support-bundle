@@ -95,6 +95,22 @@ function Resolve-QodoScoutArchitecture {
     return ConvertTo-QodoScoutArchitecture -Value $ProcessorArchitecture
 }
 
+function Resolve-QodoScoutLatestVersion {
+    param([Parameter(Mandatory)][string]$Directory)
+
+    $path = Join-Path $Directory 'latest-version.txt'
+    Invoke-QodoScoutDownload `
+        -Uri "$script:QodoScoutBaseUrl/latest-version.txt" `
+        -Destination $path `
+        -VersionMetadata
+    $value = [IO.File]::ReadAllText($path)
+    if ((Get-Item -LiteralPath $path).Length -gt 64 -or
+        $value -cnotmatch '\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\n)?\z') {
+        throw 'invalid latest production version'
+    }
+    return $value.TrimEnd([char]10)
+}
+
 function Get-QodoScoutManifestDigest {
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$ManifestText,
@@ -125,13 +141,18 @@ function Get-QodoScoutManifestDigest {
 function Invoke-QodoScoutDownload {
     param(
         [Parameter(Mandatory)][uri]$Uri,
-        [Parameter(Mandatory)][string]$Destination
+        [Parameter(Mandatory)][string]$Destination,
+        [switch]$VersionMetadata
     )
 
     if (-not (Get-Command 'curl.exe' -ErrorAction SilentlyContinue)) {
         throw 'curl.exe is required for network installation'
     }
-    & curl.exe `
+    $limits = @()
+    if ($VersionMetadata) {
+        $limits = @('--max-filesize', '64', '--max-time', '30')
+    }
+    & curl.exe @limits `
         --fail `
         --location `
         --proto '=https' `
@@ -278,13 +299,9 @@ function Install-QodoScout {
         throw 'install directory must be an absolute path'
     }
 
-    if ([string]::IsNullOrWhiteSpace($RequestedVersion)) {
-        throw '-Version is required; install an explicit release'
-    }
-    Assert-QodoScoutVersion -Value $RequestedVersion
     if (-not [string]::IsNullOrWhiteSpace($RequestedSourceDirectory)) {
-        if ([string]::IsNullOrWhiteSpace($RequestedVersion)) {
-            throw '-SourceDir requires -Version so the local release is explicit'
+        if ([string]::IsNullOrEmpty($RequestedVersion) -or $RequestedVersion -ceq 'latest') {
+            throw '-SourceDir requires an explicit -Version'
         }
         if (-not (Test-QodoScoutFullyQualifiedPath -Value $RequestedSourceDirectory)) {
             throw 'source directory must be an absolute path'
@@ -301,6 +318,10 @@ function Install-QodoScout {
     $stagedInstall = $null
     $rollbackFile = $null
     try {
+        if ([string]::IsNullOrEmpty($RequestedVersion) -or $RequestedVersion -ceq 'latest') {
+            $RequestedVersion = Resolve-QodoScoutLatestVersion -Directory $temporaryDirectory
+        }
+        Assert-QodoScoutVersion -Value $RequestedVersion
         $releaseBaseUrl = Get-QodoScoutReleaseBaseUrl -Version $RequestedVersion
         $assetUrl = Get-QodoScoutAssetUrl `
             -Version $RequestedVersion `

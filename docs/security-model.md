@@ -22,8 +22,12 @@ The operator workstation is the main trust boundary:
 
 The distribution boundary consists of GitHub release provenance and immutable,
 version-specific GCS objects. Publication verifies exact bytes and headers in
-dev and requires production approval. There are no mutable aliases, latest
-metadata, or publication locks in the supported contract. See
+dev and requires production approval. Three root discovery objects are mutable:
+`install.sh`, `install.ps1`, and `latest-version.txt`.
+They use no-store caching and generation-conditional writes; the latest pointer
+is committed after the verified installers and only after pinned production
+canaries pass. The installer resolves it once and verifies immutable release
+bytes. No bucket listing or publication lock objects are needed. See
 [the publication runbook](publication.md).
 
 ## Kubernetes RBAC

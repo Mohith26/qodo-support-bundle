@@ -67,17 +67,7 @@ def validate_issuer(issuer: object) -> str:
     except ValueError as error:
         raise ValueError(REASON_INVALID_ISSUER) from error
     if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or "?" in issuer
-        or "#" in issuer
-        or "\\" in issuer
-        or any(character.isspace() or ord(character) < 32 for character in issuer)
-        or port == 0
+        parsed.scheme != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment or "?" in issuer or "#" in issuer or "\\" in issuer or any(character.isspace() or ord(character) < 32 for character in issuer) or port == 0
     ):
         raise ValueError(REASON_INVALID_ISSUER)
     return issuer
@@ -92,17 +82,7 @@ def validate_backend_url(value: object) -> str:
     except ValueError as error:
         raise ValueError(REASON_INVALID_ISSUER) from error
     if (
-        parsed.scheme not in ("http", "https")
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or "?" in value
-        or "#" in value
-        or "\\" in value
-        or any(character.isspace() or ord(character) < 32 for character in value)
-        or port == 0
+        parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment or "?" in value or "#" in value or "\\" in value or any(character.isspace() or ord(character) < 32 for character in value) or port == 0
     ):
         raise ValueError(REASON_INVALID_ISSUER)
     return value
@@ -160,8 +140,7 @@ def read_json(
                     )
                     return None, reason, status
                 if (
-                    response.headers.get("content-encoding", "identity").lower()
-                    != "identity"
+                    response.headers.get("content-encoding", "identity").lower() != "identity"
                 ):
                     return None, REASON_UNSUPPORTED_ENCODING, status
                 body = bytearray()
@@ -220,10 +199,7 @@ def probe(
         headers,
     )
     if not reason and (
-        not isinstance(keys, dict)
-        or not isinstance(keys.get("keys"), list)
-        or not keys["keys"]
-        or not all(public_key_shape(key) for key in keys["keys"])
+        not isinstance(keys, dict) or not isinstance(keys.get("keys"), list) or not keys["keys"] or not all(public_key_shape(key) for key in keys["keys"])
     ):
         reason = REASON_INVALID_JWKS
     checks.append(check_result("jwks", reason, http_status=status))

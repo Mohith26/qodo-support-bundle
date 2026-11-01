@@ -71,7 +71,7 @@ url=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o|--output) output=$2; shift 2 ;;
-    --retry|--retry-delay|--connect-timeout) shift 2 ;;
+    --retry|--retry-delay|--connect-timeout|--max-filesize|--max-time) shift 2 ;;
     --proto|--proto-redir) shift 2 ;;
     --tlsv1.2|-f|-L|-fL|--fail|--location|--silent|--show-error) shift ;;
     https://*) url=$1; shift ;;
@@ -82,6 +82,9 @@ done
 printf '%s\n' "$url" >> "${FAKE_CURL_LOG:?}"
 relative=${url#https://get.qodo.ai/support-bundle/}
 cp "${FAKE_SERVER:?}/$relative" "$output"
+if [ "$relative" = latest-version.txt ] && [ -n "${FAKE_LATEST_AFTER_READ:-}" ]; then
+  printf '%s\n' "$FAKE_LATEST_AFTER_READ" > "$FAKE_SERVER/latest-version.txt"
+fi
 EOF
   chmod 0755 "$directory/uname" "$directory/curl"
 }
@@ -111,14 +114,61 @@ mkdir -p "$TEST_ROOT/server/releases/1.2.3"
 write_release "$TEST_ROOT/server/releases/1.2.3" qodo-support-bundle-darwin-arm64
 : >"$TEST_ROOT/exec.log"
 : >"$TEST_ROOT/curl.log"
-if run_installer "$LATEST_HOME" "$TOOLS" --install-dir "$LATEST_INSTALL" \
-  >"$TEST_ROOT/missing-version.out" 2>&1; then
-  fail "installer accepted a network installation without --version"
-fi
-grep -F -- '--version is required' "$TEST_ROOT/missing-version.out" >/dev/null ||
-  fail "missing version error is unclear"
-pass "network installation requires an explicit version"
+for selection in default latest; do
+  printf '1.2.3\n' > "$TEST_ROOT/server/latest-version.txt"
+  : > "$TEST_ROOT/exec.log"
+  : > "$TEST_ROOT/curl.log"
+  set --
+  [ "$selection" != latest ] || set -- --version latest
+  FAKE_LATEST_AFTER_READ=9.9.9 run_installer "$LATEST_HOME" "$TOOLS" \
+    "$@" --install-dir "$LATEST_INSTALL" >/dev/null
+  [ -x "$LATEST_INSTALL/qodo-scout" ] || fail "latest did not install"
+  [ "$(cat "$TEST_ROOT/exec.log")" = version ] || fail "latest started collection"
+  [ "$(grep -c '/latest-version.txt$' "$TEST_ROOT/curl.log")" -eq 1 ] ||
+    fail "latest was resolved more than once"
+  [ "$(grep -c '/releases/1.2.3/' "$TEST_ROOT/curl.log")" -eq 2 ] ||
+    fail "latest mixed release assets after pointer changed"
+  pass "$selection resolves latest once and installs only the verified release"
+done
 
+for invalid in '' '../1.2.3' '1.2.3-beta' '01.2.3' '1.2.3\n4.5.6' '1.2.3\n\n' ' 1.2.3' \
+  '1111111111111111111111111111111111111111111111111111111111111111111111.2.3'; do
+  printf '%b' "$invalid" > "$TEST_ROOT/server/latest-version.txt"
+  prior_digest=$(sha256 "$LATEST_INSTALL/qodo-scout")
+  if run_installer "$LATEST_HOME" "$TOOLS" --install-dir "$LATEST_INSTALL" \
+    > "$TEST_ROOT/latest-invalid.out" 2>&1; then
+    fail "invalid latest metadata was accepted"
+  fi
+  [ "$(sha256 "$LATEST_INSTALL/qodo-scout")" = "$prior_digest" ] ||
+    fail "invalid metadata replaced existing executable"
+done
+pass "invalid latest metadata preserves existing installation"
+
+rm "$TEST_ROOT/server/latest-version.txt"
+prior_digest=$(sha256 "$LATEST_INSTALL/qodo-scout")
+if run_installer "$LATEST_HOME" "$TOOLS" --install-dir "$LATEST_INSTALL" \
+  > "$TEST_ROOT/latest-missing.out" 2>&1; then
+  fail "missing latest metadata was accepted"
+fi
+[ "$(sha256 "$LATEST_INSTALL/qodo-scout")" = "$prior_digest" ] ||
+  fail "missing metadata replaced existing executable"
+pass "missing latest metadata fails without replacing installation"
+
+for selection in default latest; do
+  : > "$TEST_ROOT/curl.log"
+  set --
+  [ "$selection" != latest ] || set -- --version latest
+  if run_installer "$LATEST_HOME" "$TOOLS" "$@" \
+    --source-dir "$TEST_ROOT/server/releases/1.2.3" --install-dir "$LATEST_INSTALL" \
+    > "$TEST_ROOT/offline-latest.out" 2>&1; then
+    fail "offline installation accepted unpinned version"
+  fi
+  [ ! -s "$TEST_ROOT/curl.log" ] || fail "offline installation accessed network"
+done
+pass "offline installations require explicit versions without network access"
+
+: > "$TEST_ROOT/exec.log"
+: > "$TEST_ROOT/curl.log"
 run_installer "$LATEST_HOME" "$TOOLS" --version 1.2.3 --install-dir "$LATEST_INSTALL"
 [ -x "$LATEST_INSTALL/qodo-scout" ] || fail "latest install did not create executable"
 [ "$(stat -c '%a' "$LATEST_INSTALL/qodo-scout" 2>/dev/null || stat -f '%Lp' "$LATEST_INSTALL/qodo-scout")" = 755 ] ||

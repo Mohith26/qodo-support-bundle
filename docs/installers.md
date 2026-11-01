@@ -1,7 +1,7 @@
 # Qodo Scout installers
 
 `install.sh` and `install.ps1` provide the customer-side installation flow for
-Qodo Scout. They require an explicit version, detect the supported platform,
+Qodo Scout. They default to the latest approved production version, detect the supported platform,
 download one binary and its checksum manifest from that immutable release,
 verify the exact artifact, install it as `qodo-scout`, and run only the
 non-collecting `version` command.
@@ -13,9 +13,27 @@ qodo-scout collect --interactive
 
 ## Publication status
 
-Version 0.3.1 is published at the immutable URLs below. Future versions require
-the manually dispatched dev and approved production workflows; merging
-publication code alone does not publish release objects. See
+Stable installer URLs become available after the first successful latest
+publication. Releases require the manually dispatched dev and approved
+production workflows; merging publication code alone does not publish objects.
+Until that rollout completes, use the already-published pinned installers:
+
+```sh
+curl -fL --proto '=https' --proto-redir '=https' --tlsv1.2 \
+  -o ./install-qodo-scout.sh \
+  https://get.qodo.ai/support-bundle/releases/0.3.1/install.sh
+less ./install-qodo-scout.sh
+sh ./install-qodo-scout.sh --version 0.3.1 --add-to-path
+```
+
+```powershell
+curl.exe --fail --location --output install-qodo-scout.ps1 https://get.qodo.ai/support-bundle/releases/0.3.1/install.ps1
+if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+Get-Content .\install-qodo-scout.ps1
+& .\install-qodo-scout.ps1 -Version 0.3.1 -AddToPath
+```
+
+After rollout, use the stable commands below. See
 [the publication contract and runbook](publication.md).
 
 macOS and Linux customers can inspect and run:
@@ -24,9 +42,9 @@ macOS and Linux customers can inspect and run:
 rm -f ./install-qodo-scout.sh
 curl -fL --proto '=https' --proto-redir '=https' --tlsv1.2 \
   -o ./install-qodo-scout.sh \
-  https://get.qodo.ai/support-bundle/releases/0.3.1/install.sh &&
+  https://get.qodo.ai/support-bundle/install.sh &&
   less ./install-qodo-scout.sh
-sh ./install-qodo-scout.sh --version 0.3.1 --add-to-path
+sh ./install-qodo-scout.sh --add-to-path
 ```
 
 Windows customers can inspect and run from PowerShell:
@@ -36,10 +54,10 @@ Remove-Item .\install-qodo-scout.ps1 -Force -ErrorAction SilentlyContinue
 curl.exe --fail --location --proto '=https' --tlsv1.2 `
   --proto-redir '=https' `
   --output install-qodo-scout.ps1 `
-  https://get.qodo.ai/support-bundle/releases/0.3.1/install.ps1
+  https://get.qodo.ai/support-bundle/install.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
 Get-Content .\install-qodo-scout.ps1
-& .\install-qodo-scout.ps1 -Version 0.3.1 -AddToPath
+& .\install-qodo-scout.ps1 -AddToPath
 ```
 
 For convenience, the same endpoints can be executed without saving a copy:
@@ -52,8 +70,8 @@ For convenience, the same endpoints can be executed without saving a copy:
   trap 'exit 1' HUP INT TERM
   curl -fL --proto '=https' --proto-redir '=https' --tlsv1.2 \
     -o "$installer" \
-    https://get.qodo.ai/support-bundle/releases/0.3.1/install.sh
-  sh "$installer" --version 0.3.1 --add-to-path
+    https://get.qodo.ai/support-bundle/install.sh
+  sh "$installer" --add-to-path
 )
 ```
 
@@ -65,9 +83,9 @@ For convenience, the same endpoints can be executed without saving a copy:
   try {
     curl.exe --fail --location --proto '=https' --proto-redir '=https' `
       --tlsv1.2 --output $installer `
-      https://get.qodo.ai/support-bundle/releases/0.3.1/install.ps1
+      https://get.qodo.ai/support-bundle/install.ps1
     if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
-    & $installer -Version 0.3.1 -AddToPath
+    & $installer -AddToPath
     if (-not $?) { throw 'Installer execution failed' }
   } finally {
     Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
@@ -85,7 +103,7 @@ new terminal before using the short command. The installer also prints a
 full-path command that works immediately. Neither installer requests
 administrator privileges or changes machine-wide PATH configuration.
 
-All installations are pinned for reproducibility:
+For reproducible installations, select an explicit release:
 
 ```sh
 sh ./install-qodo-scout.sh --version 0.3.1 --add-to-path
@@ -197,20 +215,22 @@ Also retain the release version and source release URL in the approved handoff
 record. Support should verify the connected copy before transfer; the customer
 verifies it again offline.
 
-## Immutable version contract
+## Latest and pinned versions
 
-Both installers require `--version` or `-Version` and reject missing or invalid
-versions. Every download uses the selected release directory:
+With no version argument, or with `--version latest` / `-Version latest`, the
+installer reads `https://get.qodo.ai/support-bundle/latest-version.txt` once.
+The response must contain one stable numeric version. Missing, malformed,
+prerelease, or oversized metadata stops installation without replacing an
+existing executable. Binary and checksum downloads then use that one version's
+immutable release directory, even if latest changes during installation.
 
-```text
-https://get.qodo.ai/support-bundle/releases/<version>/
-```
+An explicit version bypasses latest discovery. Local `--source-dir` / `-SourceDir`
+installations require an explicit version and never fetch latest metadata.
 
-All release objects use one-year immutable caching. Root installer aliases and
-current-version metadata are unsupported and may be absent. Documentation and
-portal instructions must be updated to an exact version for every release.
-This makes customer commands reproducible and lets publication remain
-create-only, at the cost of no automatic latest-version selection.
+Versioned releases retain one-year immutable caching. The root `install.sh`,
+`install.ps1`, and `latest-version.txt` objects use
+`Cache-Control: no-store`. Latest advances only after the pinned production
+canaries pass. Normal publication refuses to move latest to an older version.
 
 ## Security and proxy behavior
 
@@ -308,9 +328,9 @@ used, substitute that exact directory.
 
 ## Troubleshooting
 
-- **Root installer or metadata URL returns 404:** those mutable paths are not
-  supported. Use the documented version-specific installer URL and explicit
-  version.
+- **Root installer or metadata URL returns 404:** latest discovery has not
+  been published successfully. Use a known published version-specific installer
+  URL and explicit version, or ask Support to confirm publication.
 - **`curl` or checksum tool missing:** install `curl` and either `sha256sum` or
   `shasum` through the workstation's approved software channel. Windows uses
   built-in `curl.exe` and `Get-FileHash`.

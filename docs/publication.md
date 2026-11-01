@@ -35,11 +35,18 @@ The supported production paths are version-specific:
 https://get.qodo.ai/support-bundle/releases/<version>/<asset>
 ```
 
-Root installer aliases, a current-version metadata object, and publication
-control objects are not part of the supported contract. Customers must use an
-explicit version. Documentation and portal instructions are updated for each
-release. This trades automatic latest-version selection for reproducible,
-create-only publication that requires no object update or delete permission.
+A separate discovery layer lets customers install without selecting a version:
+
+```text
+https://get.qodo.ai/support-bundle/install.sh
+https://get.qodo.ai/support-bundle/install.ps1
+https://get.qodo.ai/support-bundle/latest-version.txt
+```
+
+Only these three root objects are mutable. They use `Cache-Control: no-store`.
+The version pointer contains one stable numeric version and a newline. Installers
+resolve it once, then fetch the binary and checksum from the immutable directory.
+Explicit version and offline installation retain the existing pinned contract.
 
 ## Release and publication sequence
 
@@ -62,7 +69,16 @@ create-only publication that requires no object update or delete permission.
    canaries use versioned installers with an explicit version and run only
    `version`.
 
-Neither canary starts cluster collection.
+8. After all pinned production canaries succeed, the protected `publish-latest`
+   job rechecks the authenticated release against production objects, rejects
+   legacy installers without latest support, and refuses a version downgrade.
+   Prerelease tags and GitHub releases marked prerelease or draft do not update latest.
+9. Discovery publication conditionally updates both installer aliases, verifies
+   them, then commits `latest-version.txt` last.
+10. CDN verification checks all three discovery objects and their no-store headers.
+    Latest-mode canaries exercise macOS, Linux, Windows AMD64 and Windows ARM64.
+
+Neither pinned nor latest canaries start cluster collection.
 
 ## Operator dispatch checklist
 
@@ -91,17 +107,34 @@ operational actions. This runbook documents them but does not authorize them.
 
 Versioned objects are create-only with generation-match `0`. Identical bytes
 and headers are accepted after an exact-object read; any byte or header
-conflict fails. Publication uses exact object requests and requires no
-`storage.objects.list`, update, overwrite, or delete permission.
+conflict fails. Immutable publication uses exact object requests and requires no bucket listing
+or overwrite permission. Discovery publication additionally needs permission to
+replace only the three root discovery objects (Cloud Storage replacement requires
+`storage.objects.create` and `storage.objects.delete`). Scope the production
+identity accordingly with an IAM condition; do not grant overwrite rights to
+`support-bundle/releases/`. Provision this permission before the first latest
+publication. This change does not provision IAM permissions.
 
 Workflow concurrency prevents overlapping attempts in the same environment.
-No GCS publication lock is needed because each version has a disjoint,
-immutable namespace. A stale control object from an earlier publication model
+The concurrency group covers the entire workflow, including discovery publication
+and canaries. Discovery writes use the generation read from each object, so a
+conflicting write fails rather than silently replacing a concurrent update.
+No GCS publication lock is needed. A stale control object from an earlier publication model
 is inert and must not be read, updated, or deleted by these workflows.
 
 Rollback never mutates an immutable release. If a release must be replaced,
-create and verify a new version, update customer-facing instructions to that
-version, and preserve the prior objects as audit evidence.
+create and verify a newer version with known-good bytes, advance latest through
+the same checks, and preserve prior objects as audit evidence. Customers may
+explicitly pin an older release while that replacement is prepared. The root installers are version-independent bootstraps and may come from
+separate releases during a partial publication; both resolve the same pointer.
+An alias write failure leaves the prior pointer intact; rerunning retries the
+publication. No root installer checksum manifest is published because a script
+and separate manifest cannot be replaced atomically. For installer byte pinning
+and checksum verification, use the immutable versioned scripts and their
+versioned `installer-checksums.sha256`, or verify the downloaded script's GitHub
+attestation.
+A CDN or latest-canary failure after pointer commit fails the workflow and needs
+operator investigation; it does not automatically downgrade the pointer.
 
 ## Manual boundaries
 
@@ -119,3 +152,12 @@ actions:
 The workflows and scripts operate only under `support-bundle/`. Repository
 visibility, platform signing, customer cloud-auth plugins, and automatic
 cluster collection are outside this publication contract.
+
+## First rollout
+
+Release a new version containing the latest-capable installers, then run dev
+publication and production promotion. Do not bootstrap latest by promoting an
+old release whose installers require a version. The stable URLs are not made
+live by merging this code. Merge the customer docs change only after the public
+latest URLs and all latest-mode canaries pass. No per-release docs update is
+needed after that.
