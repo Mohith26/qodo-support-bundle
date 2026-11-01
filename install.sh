@@ -318,8 +318,9 @@ case "$INSTALL_DIR" in
 esac
 
 if [ -n "$SOURCE_DIR" ]; then
-  [ -n "$VERSION" ] && [ "$VERSION" != latest ] ||
+  if [ -z "$VERSION" ] || [ "$VERSION" = latest ]; then
     die "--source-dir requires an explicit --version"
+  fi
   case "$SOURCE_DIR" in
     /*) ;;
     *) die "source directory must be an absolute path" ;;
