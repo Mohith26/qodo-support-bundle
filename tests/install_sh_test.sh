@@ -114,12 +114,12 @@ mkdir -p "$TEST_ROOT/server/releases/1.2.3"
 write_release "$TEST_ROOT/server/releases/1.2.3" qodo-support-bundle-darwin-arm64
 : >"$TEST_ROOT/exec.log"
 : >"$TEST_ROOT/curl.log"
-for selection in default latest; do
+for selection in default latest Latest LATEST lAtEsT; do
   printf '1.2.3\n' > "$TEST_ROOT/server/latest-version.txt"
   : > "$TEST_ROOT/exec.log"
   : > "$TEST_ROOT/curl.log"
   set --
-  [ "$selection" != latest ] || set -- --version latest
+  [ "$selection" = default ] || set -- --version "$selection"
   FAKE_LATEST_AFTER_READ=9.9.9 run_installer "$LATEST_HOME" "$TOOLS" \
     "$@" --install-dir "$LATEST_INSTALL" >/dev/null
   [ -x "$LATEST_INSTALL/qodo-scout" ] || fail "latest did not install"
@@ -154,10 +154,10 @@ fi
   fail "missing metadata replaced existing executable"
 pass "missing latest metadata fails without replacing installation"
 
-for selection in default latest; do
+for selection in default latest Latest LATEST lAtEsT; do
   : > "$TEST_ROOT/curl.log"
   set --
-  [ "$selection" != latest ] || set -- --version latest
+  [ "$selection" = default ] || set -- --version "$selection"
   if run_installer "$LATEST_HOME" "$TOOLS" "$@" \
     --source-dir "$TEST_ROOT/server/releases/1.2.3" --install-dir "$LATEST_INSTALL" \
     > "$TEST_ROOT/offline-latest.out" 2>&1; then

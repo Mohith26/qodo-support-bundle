@@ -136,6 +136,45 @@ attestation.
 A CDN or latest-canary failure after pointer commit fails the workflow and needs
 operator investigation; it does not automatically downgrade the pointer.
 
+### Recover an incomplete discovery publication
+
+If a discovery write or verification fails, the script reports incomplete
+publication and exits unsuccessfully. The root installers can temporarily have
+different bytes. An installer-alias failure occurs before the pointer update;
+a pointer verification failure can occur after its write succeeded. Do not
+assume that a failed job means the pointer is unchanged.
+
+1. Inspect the failed job, the three root objects, and their generations. Check
+   whether `latest-version.txt` still selects the previous version, selects the
+   attempted version, or was advanced by another publisher.
+2. Resolve the reported permission, network, or object-verification failure.
+   Keep customer docs on pinned installation until the first rollout completes.
+3. If no newer version has been published, rerun the failed production workflow
+   jobs for the same approved version. Publication revalidates the immutable
+   release, reconciles both aliases, and only then writes and verifies the pointer.
+4. If another publisher advanced the pointer, investigate that release's workflow
+   and recover using its approved version. Do not delete objects or force an older
+   pointer. The generation checks and downgrade guard must remain enabled.
+5. Require successful CDN verification and all latest canaries before declaring
+   recovery complete or publishing the versionless customer instructions.
+
+Automatic compensating writes could overwrite a concurrent publisher or fail
+for the same reason as the original write. Recovery therefore uses the existing
+conditional, idempotent publication path instead of an automatic rollback.
+
+## Discovery rehearsal
+
+`go test ./internal/distribution -run '^TestLatest'` rehearses publication through
+the real script with a fake GCS transport, without cloud credentials. It covers
+partial-write recovery, pointer conflicts, and an isolated development bucket
+and prefix with no production requests. Installer suites separately exercise
+versionless resolution through fake network transports.
+
+This rehearsal does not validate live development IAM or a CDN. The live dev
+canaries still install pinned releases. Production discovery requires its own
+protected approval and public canaries; do not treat the local rehearsal as
+proof that production endpoints are available.
+
 ## Manual boundaries
 
 Merging code does not publish anything. The following remain explicit operator

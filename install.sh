@@ -312,6 +312,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+case "$VERSION" in
+  [Ll][Aa][Tt][Ee][Ss][Tt]) VERSION=latest ;;
+esac
+
 case "$INSTALL_DIR" in
   /*) ;;
   *) die "install directory must be an absolute path" ;;

@@ -27,6 +27,8 @@ func (fixture latestFixture) command(version string, extra ...string) *exec.Cmd 
 		"FAKE_REQUESTS="+fixture.requests,
 		"QODO_SUPPORT_BUNDLE_RELEASE_DIR="+fixture.release,
 		"QODO_SUPPORT_BUNDLE_VERSION="+version,
+		"QODO_SUPPORT_BUNDLE_DESTINATION_BUCKET=qodo-cli-public",
+		"QODO_SUPPORT_BUNDLE_PREFIX=support-bundle",
 	)
 	command.Env = append(command.Env, extra...)
 	return command

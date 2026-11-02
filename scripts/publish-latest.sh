@@ -30,7 +30,25 @@ for INSTALLER in install.sh install.ps1; do
 done
 
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+DISCOVERY_STARTED=0
+DISCOVERY_COMPLETE=0
+cleanup() {
+  STATUS=$?
+  trap - EXIT HUP INT TERM
+  if [ "$DISCOVERY_STARTED" -eq 1 ] && [ "$DISCOVERY_COMPLETE" -eq 0 ]; then
+    printf '%s\n' \
+      'publish-latest: discovery publication is incomplete; installer aliases may differ.' \
+      'publish-latest: inspect latest-version.txt before recovery; a failed verification may follow a successful write.' \
+      'publish-latest: after resolving the error, rerun the same approved version to reconcile aliases and verify the pointer.' \
+      'publish-latest: do not overwrite a newer pointer or delete discovery objects; see docs/publication.md#recover-an-incomplete-discovery-publication.' >&2
+  fi
+  rm -rf "$WORK"
+  exit "$STATUS"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 TOKEN=$(gcloud auth print-access-token)
 release_files | while IFS= read -r FILE; do
   gcs_verify_exact \
@@ -88,10 +106,12 @@ update_discovery() (
     'text/plain; charset=utf-8' no-store "$TOKEN" "$WORK/verified" publish-latest
 )
 
+DISCOVERY_STARTED=1
 for FILE in install.sh install.ps1; do
   update_discovery "$FILE" "$RELEASE_DIR/$FILE"
 done
 printf '%s\n' "$VERSION" > "$WORK/latest-version.txt"
 # Bootstrap scripts resolve any supported release; only the pointer selects the installed version.
 update_discovery latest-version.txt "$WORK/latest-version.txt" "$LATEST_GENERATION"
+DISCOVERY_COMPLETE=1
 printf 'publish-latest: latest production release is %s\n' "$VERSION"

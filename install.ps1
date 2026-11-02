@@ -300,7 +300,7 @@ function Install-QodoScout {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($RequestedSourceDirectory)) {
-        if ([string]::IsNullOrEmpty($RequestedVersion) -or $RequestedVersion -ceq 'latest') {
+        if ([string]::IsNullOrEmpty($RequestedVersion) -or $RequestedVersion -eq 'latest') {
             throw '-SourceDir requires an explicit -Version'
         }
         if (-not (Test-QodoScoutFullyQualifiedPath -Value $RequestedSourceDirectory)) {
@@ -318,7 +318,7 @@ function Install-QodoScout {
     $stagedInstall = $null
     $rollbackFile = $null
     try {
-        if ([string]::IsNullOrEmpty($RequestedVersion) -or $RequestedVersion -ceq 'latest') {
+        if ([string]::IsNullOrEmpty($RequestedVersion) -or $RequestedVersion -eq 'latest') {
             $RequestedVersion = Resolve-QodoScoutLatestVersion -Directory $temporaryDirectory
         }
         Assert-QodoScoutVersion -Value $RequestedVersion

@@ -331,6 +331,9 @@ Describe 'Qodo Scout network installation' -Skip:(-not $script:IsWindowsPlatform
     It 'resolves latest exactly once when version is <Version>' -TestCases @(
         @{ Version = '' }
         @{ Version = 'latest' }
+        @{ Version = 'Latest' }
+        @{ Version = 'LATEST' }
+        @{ Version = 'lAtEsT' }
     ) {
         param($Version)
 
@@ -349,6 +352,9 @@ Describe 'Qodo Scout network installation' -Skip:(-not $script:IsWindowsPlatform
     It 'rejects unpinned local sources without a network request' -TestCases @(
         @{ Version = '' }
         @{ Version = 'latest' }
+        @{ Version = 'Latest' }
+        @{ Version = 'LATEST' }
+        @{ Version = 'lAtEsT' }
     ) {
         param($Version)
 

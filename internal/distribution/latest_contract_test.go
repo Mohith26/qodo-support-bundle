@@ -146,3 +146,51 @@ func TestLatestConcurrentPointerUpdateIsPreserved(t *testing.T) {
 		t.Fatal("concurrent latest pointer was not preserved")
 	}
 }
+
+func TestLatestRetryReconcilesPartialBootstrapPublication(t *testing.T) {
+	fixture := newLatestFixture(t)
+	writeLatestFile(t, fixture.object("latest-version.txt"), "1.2.2\n")
+	writeLatestFile(t, fixture.object("install.sh"), "previous Unix installer")
+	writeLatestFile(t, fixture.object("install.ps1"), "previous Windows installer")
+
+	output, err := fixture.command("1.2.3", "FAKE_FAIL_OBJECT=qodo-cli-public/support-bundle/install.ps1").CombinedOutput()
+
+	if err == nil || !strings.Contains(string(output), "discovery publication is incomplete") ||
+		!strings.Contains(string(output), "rerun the same approved version") {
+		t.Fatalf("missing recovery diagnostic: %v\n%s", err, output)
+	}
+	if readText(t, fixture.object("latest-version.txt")) != "1.2.2\n" ||
+		readText(t, fixture.object("install.sh")) != readText(t, filepath.Join(fixture.release, "install.sh")) ||
+		readText(t, fixture.object("install.ps1")) != "previous Windows installer" {
+		t.Fatal("second-alias failure did not leave the expected partial publication")
+	}
+
+	output, err = fixture.command("1.2.3").CombinedOutput()
+
+	if err != nil || readText(t, fixture.object("latest-version.txt")) != "1.2.3\n" ||
+		readText(t, fixture.object("install.sh")) != readText(t, filepath.Join(fixture.release, "install.sh")) ||
+		readText(t, fixture.object("install.ps1")) != readText(t, filepath.Join(fixture.release, "install.ps1")) {
+		t.Fatalf("retry did not reconcile both aliases and commit the pointer: %v\n%s", err, output)
+	}
+}
+
+func TestLatestRehearsalUsesOnlyConfiguredDevelopmentDestination(t *testing.T) {
+	fixture := newLatestFixture(t)
+	bucket, prefix := "qodo-cli-public-dev", "scout-rehearsal"
+	copyReleaseFixture(t, fixture.release, filepath.Join(fixture.storage, bucket, prefix, "releases/1.2.3"))
+
+	output, err := fixture.command("1.2.3", "QODO_SUPPORT_BUNDLE_DESTINATION_BUCKET="+bucket,
+		"QODO_SUPPORT_BUNDLE_PREFIX="+prefix).CombinedOutput()
+
+	if err != nil {
+		t.Fatalf("development rehearsal failed: %v\n%s", err, output)
+	}
+	if readText(t, filepath.Join(fixture.storage, bucket, prefix, "latest-version.txt")) != "1.2.3\n" {
+		t.Fatal("rehearsal did not publish the development pointer")
+	}
+	for _, request := range strings.Split(strings.TrimSpace(readText(t, fixture.requests)), "\n") {
+		if !strings.Contains(request, "https://storage.googleapis.com/"+bucket+"/"+prefix+"/") {
+			t.Fatalf("rehearsal requested an object outside its development destination: %s", request)
+		}
+	}
+}
