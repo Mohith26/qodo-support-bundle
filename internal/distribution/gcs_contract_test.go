@@ -508,6 +508,84 @@ func TestReleaseWorkflowUploadsAssetsWithoutClobber(t *testing.T) {
 	}
 }
 
+func TestReleasePleaseUsesSharedAppAndTracksCurrentVersion(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	workflow := readText(t, filepath.Join(root, ".github/workflows/release-create.yaml"))
+	config := readText(t, filepath.Join(root, "release-please-config.json"))
+	manifest := readText(t, filepath.Join(root, ".release-please-manifest.json"))
+
+	for _, required := range []string{
+		"push:",
+		"branches: [main]",
+		"actions/create-github-app-token@",
+		"RELEASE_PLEASE_GH_APP_ID: 1400204",
+		"app-id: ${{ env.RELEASE_PLEASE_GH_APP_ID }}",
+		"RELEASE_PLEASE_GH_APP_PRIVATE_KEY",
+		"permission-issues: write",
+		"googleapis/release-please-action@",
+		"target-branch: main",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("release creation workflow does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		`"release-type": "go"`,
+		`"include-v-in-tag": true`,
+		`"include-component-in-tag": false`,
+	} {
+		if !strings.Contains(config, required) {
+			t.Fatalf("release-please config does not contain %q", required)
+		}
+	}
+	if !strings.Contains(manifest, `".": "`) {
+		t.Fatal("release-please manifest does not track the repository version")
+	}
+}
+
+func TestSuccessfulReleaseQueuesDevPublication(t *testing.T) {
+	t.Parallel()
+	workflow := readText(t, filepath.Join(
+		repositoryRoot(t),
+		".github/workflows/release-support-bundle.yaml",
+	))
+
+	for _, required := range []string{
+		"actions: write",
+		"GH_REPO: ${{ github.repository }}",
+		"gh workflow run publish-support-bundle.yaml",
+		"--ref main",
+		`-f version="$RELEASE_VERSION"`,
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("release workflow does not contain %q", required)
+		}
+	}
+}
+
+func TestSuccessfulDevCanariesQueueProductionApproval(t *testing.T) {
+	t.Parallel()
+	workflow := readText(t, filepath.Join(
+		repositoryRoot(t),
+		".github/workflows/publish-support-bundle.yaml",
+	))
+
+	for _, required := range []string{
+		"dispatch-production-promotion:",
+		"needs: [publish, windows-arm64-canary]",
+		"actions: write",
+		"GH_REPO: ${{ github.repository }}",
+		"gh workflow run promote-support-bundle.yaml",
+		"--ref main",
+		`-f version="$RELEASE_VERSION"`,
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("dev publication workflow does not contain %q", required)
+		}
+	}
+}
+
 func TestCanariesRunVersionOnlyAndReleaseHasTenAssets(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)

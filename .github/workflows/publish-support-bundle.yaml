@@ -175,3 +175,21 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $pinnedVersion -ne $version) {
               throw "pinned native Windows ARM64 binary reports '$pinnedVersion', expected '$version'"
           }
+
+  dispatch-production-promotion:
+    needs: [publish, windows-arm64-canary]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Queue production promotion
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          gh workflow run promote-support-bundle.yaml \
+            --ref main \
+            -f version="$RELEASE_VERSION"

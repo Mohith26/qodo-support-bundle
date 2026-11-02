@@ -191,6 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: write
       attestations: write
       contents: write
       id-token: write
@@ -281,3 +282,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: sh scripts/upload-github-release.sh "$RELEASE_TAG" dist
+
+      - name: Queue dev publication
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          gh workflow run publish-support-bundle.yaml \
+            --ref main \
+            -f version="$RELEASE_VERSION"

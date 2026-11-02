@@ -1,8 +1,9 @@
 # Qodo Scout publication
 
-Qodo Scout uses an authenticated GitHub release as the source of truth, a
-development GCS canary, and a manually approved production promotion. The
-workflows never rebuild during publication or promotion.
+Qodo Scout uses Release Please to create authenticated GitHub releases from
+conventional commits, a development GCS canary, and a manually approved
+production promotion. The workflows never rebuild during publication or
+promotion.
 
 ## Object contract
 
@@ -48,60 +49,68 @@ The version pointer contains one stable numeric version and a newline. Installer
 resolve it once, then fetch the binary and checksum from the immutable directory.
 Explicit version and offline installation retain the existing pinned contract.
 
+## Automation prerequisite
+
+Repository Actions must have access to the organization secret
+`RELEASE_PLEASE_GH_APP_PRIVATE_KEY` for the shared release GitHub App
+(`1400204`). The App token lets Release Please PRs and releases trigger the
+repository's required checks and downstream release workflow.
+
 ## Release and publication sequence
 
-1. The release workflow builds six binaries, copies the exact repository
+1. A push to `main` creates or updates a Release Please PR. Merging that PR
+   creates the next semantic-version tag and GitHub release.
+2. The release workflow builds six binaries, copies the exact repository
    installer bytes, creates separate binary and installer manifests, attests
    all ten files, and uploads only missing GitHub release assets.
-2. An existing same-name GitHub asset is downloaded and compared. Identical
+3. An existing same-name GitHub asset is downloaded and compared. Identical
    bytes make a rerun succeed; different bytes stop the release. Assets are
    never overwritten with `--clobber`.
-3. A manual dev-publication dispatch verifies every release attestation and
-   checksum before using the development publisher identity.
-4. The dev publisher creates or verifies only the ten immutable versioned
+4. A successful release automatically dispatches dev publication, which
+   verifies every release attestation and checksum before using the development
+   publisher identity.
+5. The dev publisher creates or verifies only the ten immutable versioned
    objects.
-5. Dev canaries install from exact objects and run only `qodo-scout version`.
+6. Dev canaries install from exact objects and run only `qodo-scout version`.
    The Windows ARM64 canary executes natively on `windows-11-arm`.
-6. The production workflow requires the `production` environment approval. It
-   independently verifies the GitHub release and exact dev objects before
-   promoting byte-identical objects.
-7. Production creates or verifies only immutable versioned objects. Public CDN
+7. Successful dev canaries automatically dispatch production promotion. The
+   workflow waits for `production` environment approval, then independently
+   verifies the GitHub release and exact dev objects before promoting
+   byte-identical objects.
+8. Production creates or verifies only immutable versioned objects. Public CDN
    canaries use versioned installers with an explicit version and run only
    `version`.
 
-8. After all pinned production canaries succeed, the protected `publish-latest`
+9. After all pinned production canaries succeed, the protected `publish-latest`
    job rechecks the authenticated release against production objects, rejects
    legacy installers without latest support, and refuses a version downgrade.
    Prerelease tags and GitHub releases marked prerelease or draft do not update latest.
-9. Discovery publication conditionally updates both installer aliases, verifies
+10. Discovery publication conditionally updates both installer aliases, verifies
    them, then commits `latest-version.txt` last.
-10. CDN verification checks all three discovery objects and their no-store headers.
+11. CDN verification checks all three discovery objects and their no-store headers.
     Latest-mode canaries exercise macOS, Linux, Windows AMD64 and Windows ARM64.
 
 Neither pinned nor latest canaries start cluster collection.
 
 ## Operator dispatch checklist
 
-1. Confirm the intended commit is on `main`, the version follows the installer
-   grammar, and the matching GitHub release is published.
-2. Let `.github/workflows/release-support-bundle.yaml` process the published
-   release. A manual release run is recovery-only: run it from the matching tag
-   ref and provide that same tag, never from an unrelated branch.
-3. After the release assets, attestations, and native smoke jobs pass, manually
-   dispatch `.github/workflows/publish-support-bundle.yaml` from `main` with the
-   release version (for example `1.2.3`; the workflow also resolves its matching
-   `v1.2.3` tag).
-4. Review all exact dev object validation and pinned canary evidence. Stop on
-   any mismatch.
-5. Manually dispatch `.github/workflows/promote-support-bundle.yaml` from
-   `main` with the same version. A named reviewer must approve the protected
-   `production` environment before promotion can run.
-6. Review exact GitHub/dev/CDN byte identity, headers, and every public canary.
+1. Use conventional commit types in merged work: `fix` for a patch release,
+   `feat` for a minor release, and a breaking-change marker for a major release.
+2. Review and merge the Release Please PR when the accumulated changes are
+   ready. This creates the tag and GitHub release.
+3. Review the release workflow and automatically dispatched dev publication.
+   Stop on any asset, attestation, exact-object, or canary mismatch.
+4. Approve the protected `production` environment when the automatically
+   dispatched promotion reaches its approval gate.
+5. Review exact GitHub/dev/CDN byte identity, headers, and every public canary.
    Preserve the workflow URLs, checksums, object generations, and approver in
    the release record.
 
-Workflow dispatch, environment approval, and cloud credentials are live
-operational actions. This runbook documents them but does not authorize them.
+Manual workflow dispatch remains available for recovery. Run the release
+workflow from the matching tag ref, and run dev publication or production
+promotion from `main` with that same version. Workflow dispatch, environment
+approval, and cloud credentials are live operational actions. This runbook
+documents them but does not authorize them.
 
 ## Concurrency, reruns, and rollback
 
@@ -177,16 +186,15 @@ proof that production endpoints are available.
 
 ## Manual boundaries
 
-Merging code does not publish anything. The following remain explicit operator
-actions:
+Merging a regular change updates the Release Please PR; merging the Release
+Please PR publishes the release. The following remain explicit operator actions:
 
 - complete and approve the
   [public distribution readiness checklist](public-readiness.md) before a
   customer pilot;
-- dispatch dev publication from `main`;
-- review dev canary evidence;
+- review and merge the Release Please PR;
 - approve the protected production environment;
-- dispatch production promotion and review public canaries.
+- review dev and public canary evidence.
 
 The workflows and scripts operate only under `support-bundle/`. Repository
 visibility, platform signing, customer cloud-auth plugins, and automatic
