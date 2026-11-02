@@ -156,6 +156,42 @@ Describe 'Qodo Scout Windows installer contracts' {
     }
 }
 
+Describe 'Qodo Scout latest metadata' {
+    It 'resolves a stable version from bounded metadata' {
+        Mock Invoke-QodoScoutDownload {
+            param($Uri, $Destination, $VersionMetadata)
+            [IO.File]::WriteAllText($Destination, "4.5.6`n")
+        }
+
+        $version = Resolve-QodoScoutLatestVersion -Directory $TestDrive
+
+        $version | Should -Be '4.5.6'
+        Assert-MockCalled Invoke-QodoScoutDownload -Times 1 -Exactly -ParameterFilter {
+            $VersionMetadata -and $Uri -eq 'https://get.qodo.ai/support-bundle/latest-version.txt'
+        }
+    }
+
+    It 'rejects invalid latest metadata <Value>' -TestCases @(
+        @{ Value = '' }
+        @{ Value = '../4.5.6' }
+        @{ Value = '4.5.6-beta' }
+        @{ Value = '04.5.6' }
+        @{ Value = "4.5.6`n7.8.9" }
+        @{ Value = "4.5.6`n`n" }
+        @{ Value = ' 4.5.6' }
+        @{ Value = ('1' * 65) + '.2.3' }
+    ) {
+        param($Value)
+        Mock Invoke-QodoScoutDownload {
+            param($Uri, $Destination)
+            [IO.File]::WriteAllText($Destination, $Value)
+        }
+
+        { Resolve-QodoScoutLatestVersion -Directory $TestDrive } |
+            Should -Throw '*invalid latest production version*'
+    }
+}
+
 Describe 'Qodo Scout local source installation' -Skip:(-not $script:IsWindowsPlatform) {
     BeforeEach {
         $script:CaseRoot = Join-Path $TestDrive 'case with spaces'
@@ -260,7 +296,7 @@ Describe 'Qodo Scout local source installation' -Skip:(-not $script:IsWindowsPla
     }
 }
 
-Describe 'Qodo Scout pinned network installation' -Skip:(-not $script:IsWindowsPlatform) {
+Describe 'Qodo Scout network installation' -Skip:(-not $script:IsWindowsPlatform) {
     BeforeEach {
         $script:DownloadedUris = @()
         $script:InstallerTempDirectory = $null
@@ -271,6 +307,10 @@ Describe 'Qodo Scout pinned network installation' -Skip:(-not $script:IsWindowsP
 
             $script:DownloadedUris += $Uri.AbsoluteUri
             $script:InstallerTempDirectory = Split-Path -Parent $Destination
+            if ($Uri.AbsolutePath.EndsWith('/latest-version.txt')) {
+                [IO.File]::WriteAllText($Destination, "4.5.6`n")
+                return
+            }
             if ($Uri.AbsolutePath.EndsWith('/checksums.sha256')) {
                 $assetPath = Join-Path `
                     (Split-Path -Parent $Destination) `
@@ -288,12 +328,39 @@ Describe 'Qodo Scout pinned network installation' -Skip:(-not $script:IsWindowsP
         }
     }
 
-    It 'requires an explicit version' {
-        {
-            Install-QodoScout `
-                -RequestedInstallDirectory $script:LatestInstallDirectory `
-                -RuntimeArchitecture 'X64'
-        } | Should -Throw '*-Version is required*'
+    It 'resolves latest exactly once when version is <Version>' -TestCases @(
+        @{ Version = '' }
+        @{ Version = 'latest' }
+        @{ Version = 'Latest' }
+        @{ Version = 'LATEST' }
+        @{ Version = 'lAtEsT' }
+    ) {
+        param($Version)
+
+        Install-QodoScout -RequestedVersion $Version `
+            -RequestedInstallDirectory $script:LatestInstallDirectory -RuntimeArchitecture 'X64'
+
+        ($script:DownloadedUris -join "`n") | Should -Be (@(
+            'https://get.qodo.ai/support-bundle/latest-version.txt',
+            'https://get.qodo.ai/support-bundle/releases/4.5.6/qodo-support-bundle-windows-amd64.exe',
+            'https://get.qodo.ai/support-bundle/releases/4.5.6/checksums.sha256'
+        ) -join "`n")
+        Test-Path $script:InstallerTempDirectory | Should -BeFalse
+        Assert-MockCalled Invoke-QodoScoutSmokeCheck -Times 1 -Exactly
+    }
+
+    It 'rejects unpinned local sources without a network request' -TestCases @(
+        @{ Version = '' }
+        @{ Version = 'latest' }
+        @{ Version = 'Latest' }
+        @{ Version = 'LATEST' }
+        @{ Version = 'lAtEsT' }
+    ) {
+        param($Version)
+
+        { Install-QodoScout -RequestedVersion $Version -RequestedSourceDirectory $TestDrive `
+            -RequestedInstallDirectory $script:LatestInstallDirectory -RuntimeArchitecture 'X64'
+        } | Should -Throw '*requires an explicit -Version*'
         Assert-MockCalled Invoke-QodoScoutDownload -Times 0 -Exactly
     }
 
@@ -317,6 +384,10 @@ Describe 'Qodo Scout pinned network installation' -Skip:(-not $script:IsWindowsP
             param([uri]$Uri, [string]$Destination)
 
             $script:DownloadedUris += $Uri.AbsoluteUri
+            if ($Uri.AbsolutePath.EndsWith('/latest-version.txt')) {
+                [IO.File]::WriteAllText($Destination, "4.5.6`n")
+                return
+            }
             if ($Uri.AbsolutePath.EndsWith('/checksums.sha256')) {
                 $asset = 'qodo-support-bundle-windows-arm64.exe'
                 $assetPath = Join-Path (Split-Path -Parent $Destination) $asset

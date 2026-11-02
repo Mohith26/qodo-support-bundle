@@ -32,6 +32,7 @@ jobs:
     environment: production
     outputs:
       version: ${{ steps.release.outputs.version }}
+      latest_eligible: ${{ steps.release.outputs.latest_eligible }}
     steps:
       - name: Checkout promotion logic
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -66,10 +67,15 @@ jobs:
             exit 1
           fi
           release_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$release_tag" --jq .sha)"
+          latest_eligible=false
+          if [[ "${release_tag#v}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            latest_eligible="$(gh release view "$release_tag" --json isDraft,isPrerelease --jq '(.isDraft or .isPrerelease) | not')"
+          fi
           {
             echo "tag=${release_tag}"
             echo "version=${release_tag#v}"
             echo "sha=${release_sha}"
+            echo "latest_eligible=${latest_eligible}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Download and verify GitHub release provenance
@@ -112,6 +118,14 @@ jobs:
           QODO_SUPPORT_BUNDLE_VERSION: ${{ steps.release.outputs.version }}
         run: sh scripts/verify-production-cdn.sh
 
+      - name: Store verified release for discovery publication
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-support-bundle-${{ github.run_id }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+
   production-unix-canary:
     needs: promote
     strategy:
@@ -152,4 +166,89 @@ jobs:
           $pinnedVersion = (& "$work/pinned/qodo-scout.exe" version).Trim()
           if ($LASTEXITCODE -ne 0 -or $pinnedVersion -ne $env:EXPECTED_VERSION) {
               throw "pinned Windows ARM64 binary reports '$pinnedVersion', expected '$env:EXPECTED_VERSION'"
+          }
+
+  publish-latest:
+    needs: [promote, production-unix-canary, production-windows-arm64-canary]
+    if: github.ref == 'refs/heads/main' && needs.promote.outputs.latest_eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout discovery publication logic
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Download verified release
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: verified-support-bundle-${{ github.run_id }}
+          path: release/
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+      - name: Publish latest production discovery
+        env:
+          QODO_SUPPORT_BUNDLE_RELEASE_DIR: ${{ github.workspace }}/release
+          QODO_SUPPORT_BUNDLE_VERSION: ${{ needs.promote.outputs.version }}
+        run: ./scripts/publish-latest.sh
+
+      - name: Verify discovery CDN bytes and headers
+        env:
+          QODO_SUPPORT_BUNDLE_RELEASE_DIR: ${{ github.workspace }}/release
+          QODO_SUPPORT_BUNDLE_VERSION: ${{ needs.promote.outputs.version }}
+        run: sh scripts/verify-production-cdn.sh --latest
+
+  latest-unix-canary:
+    needs: [promote, publish-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout canary logic
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Exercise latest production installer
+        env:
+          QODO_SUPPORT_BUNDLE_VERSION: ${{ needs.promote.outputs.version }}
+        run: sh scripts/canary-production-installers.sh --latest
+
+  latest-windows-canary:
+    needs: [promote, publish-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Exercise latest Windows installer
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ needs.promote.outputs.version }}
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'qodo-scout-latest'
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          curl.exe --fail --location --silent --show-error --output "$work/install.ps1" https://get.qodo.ai/support-bundle/install.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'installer download failed' }
+          & "$work/install.ps1" -InstallDir "$work/bin"
+          if (-not $?) { throw 'latest installation failed' }
+          $installedVersion = (& "$work/bin/qodo-scout.exe" version).Trim()
+          if ($LASTEXITCODE -ne 0 -or $installedVersion -ne $env:EXPECTED_VERSION) {
+              throw "latest Windows binary reports '$installedVersion', expected '$env:EXPECTED_VERSION'"
           }

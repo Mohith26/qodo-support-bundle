@@ -18,3 +18,14 @@ pinned_version="$("${work}/pinned/qodo-scout" version)"
   echo "canary-production-installers: pinned binary reports ${pinned_version}, expected ${EXPECTED_VERSION}" >&2
   exit 1
 }
+
+if [ "${1-}" = --latest ]; then
+  curl --fail --location --silent --show-error \
+    --output "$work/install-latest.sh" "$BASE_URL/install.sh"
+  sh "$work/install-latest.sh" --install-dir "$work/latest"
+  latest_version=$("$work/latest/qodo-scout" version)
+  [ "$latest_version" = "$EXPECTED_VERSION" ] || {
+    echo "canary-production-installers: latest binary reports $latest_version, expected $EXPECTED_VERSION" >&2
+    exit 1
+  }
+fi

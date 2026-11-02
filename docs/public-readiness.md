@@ -48,8 +48,12 @@ visibility change, release publication, bucket write, or customer rollout.
 - [ ] Confirm anonymous access only to intended
   `support-bundle/` customer objects; verify that bucket listing and unrelated
   prefixes remain denied.
-- [ ] Confirm root installer aliases and current-version metadata are not part
-  of the supported contract; customer instructions must use versioned URLs.
+- [ ] Restrict discovery overwrite permissions to the three root objects in
+  the publication runbook; keep versioned release writes create-only.
+- [ ] Verify latest discovery uses no-store caching, advances only after every
+  pinned production canary, and rejects older versions and legacy installers.
+- [ ] Exercise the no-version installers through the public CDN before merging
+  the dependent customer documentation change.
 - [ ] Obtain production approval and execute the
   [publication runbook](publication.md) without bypassing its canaries.
 - [ ] Validate GitHub, GCS, and CDN byte identity and headers after production

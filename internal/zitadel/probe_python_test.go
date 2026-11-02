@@ -25,7 +25,7 @@ func TestEmbeddedPythonProbeHTTPBehavior(t *testing.T) {
 		status  int
 		body    []byte
 		headers map[string]string
-		delay   time.Duration
+		stall   bool
 	}
 	var mutex sync.Mutex
 	responses := map[string]response{}
@@ -40,8 +40,9 @@ func TestEmbeddedPythonProbeHTTPBehavior(t *testing.T) {
 		observedHeaders = append(observedHeaders, request.Header.Clone())
 		observedHosts = append(observedHosts, request.Host)
 		mutex.Unlock()
-		if current.delay > 0 {
-			time.Sleep(current.delay)
+		if current.stall {
+			<-request.Context().Done()
+			return
 		}
 		for name, value := range current.headers {
 			writer.Header().Set(name, value)
@@ -178,7 +179,7 @@ func TestEmbeddedPythonProbeHTTPBehavior(t *testing.T) {
 			replacement: response{
 				status: 200,
 				body:   validJWKS,
-				delay:  500 * time.Millisecond,
+				stall:  true,
 			},
 			checkIndex: 1,
 			reason:     "timeout",
@@ -191,7 +192,7 @@ func TestEmbeddedPythonProbeHTTPBehavior(t *testing.T) {
 			responses[test.path] = test.replacement
 			probeTimeout := 3.0
 			if test.reason == "timeout" {
-				probeTimeout = 1.0
+				probeTimeout = 6.0
 			}
 			report := runPythonProbe(
 				t,
@@ -201,7 +202,7 @@ func TestEmbeddedPythonProbeHTTPBehavior(t *testing.T) {
 				probeTimeout,
 				map[string]string{"TEST_ZITADEL_API_URL": server.URL},
 			)
-			if report.Checks[test.checkIndex].Reason != test.reason {
+			if len(report.Checks) != 2 || report.Checks[test.checkIndex].Reason != test.reason {
 				t.Fatalf("checks=%+v", report.Checks)
 			}
 		})

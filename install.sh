@@ -22,7 +22,7 @@ usage() {
 Usage: sh install.sh [options]
 
 Options:
-  --version VERSION       Install the required exact release
+  --version VERSION       Pin a release (default: latest production release)
   --source-dir DIRECTORY  Install from a local binary and checksums.sha256
   --install-dir DIRECTORY Install to a user-owned directory
   --add-to-path           Add the install directory to the user shell profile
@@ -108,6 +108,7 @@ validate_version() {
 download() {
   url=$1
   destination=$2
+  shift 2
   curl -fL \
     --proto '=https' \
     --proto-redir '=https' \
@@ -115,7 +116,7 @@ download() {
     --retry 3 \
     --retry-delay 1 \
     -o "$destination" \
-    "$url" ||
+    "$@" "$url" ||
     die "download failed: $url"
 }
 
@@ -311,16 +312,19 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+case "$VERSION" in
+  [Ll][Aa][Tt][Ee][Ss][Tt]) VERSION=latest ;;
+esac
+
 case "$INSTALL_DIR" in
   /*) ;;
   *) die "install directory must be an absolute path" ;;
 esac
 
-[ -n "$VERSION" ] || die "--version is required; install an explicit release"
-validate_version "$VERSION"
 if [ -n "$SOURCE_DIR" ]; then
-  [ -n "$VERSION" ] ||
-    die "--source-dir requires --version so the local release is explicit"
+  if [ -z "$VERSION" ] || [ "$VERSION" = latest ]; then
+    die "--source-dir requires an explicit --version"
+  fi
   case "$SOURCE_DIR" in
     /*) ;;
     *) die "source directory must be an absolute path" ;;
@@ -346,6 +350,17 @@ TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/qodo-scout.XXXXXX") ||
   die "could not create a private temporary directory"
 chmod 0700 "$TEMP_DIR" || die "could not secure temporary directory"
 
+if [ -z "$VERSION" ] || [ "$VERSION" = latest ]; then
+  download "$BASE_URL/latest-version.txt" "$TEMP_DIR/latest-version.txt" \
+    --max-filesize 64 --max-time 30
+  VERSION=$(awk '
+    { value = $0; valid = ($0 ~ /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/) }
+    END { if (NR != 1 || !valid) exit 1; print value }
+  ' "$TEMP_DIR/latest-version.txt") || die "invalid latest production version"
+  [ "$(wc -c < "$TEMP_DIR/latest-version.txt")" -le 64 ] ||
+    die "latest production version is too large"
+fi
+validate_version "$VERSION"
 release_url=$BASE_URL/releases/$VERSION
 binary=$TEMP_DIR/$asset
 manifest=$TEMP_DIR/checksums.sha256

@@ -12,8 +12,13 @@ existing `kubectl` access and never uploads the resulting bundle automatically.
 
 ## Install
 
-The version-pinned installers download the immutable 0.3.1 release and verify
-the selected binary with SHA-256 before installing the `qodo-scout` command.
+The stable URLs below require the first latest-capable production rollout.
+Until it completes, use the published pinned commands in
+[Publication status](docs/installers.md#publication-status). Merging this change
+alone does not publish the new endpoints.
+
+The installers select the latest approved production release and verify the
+selected binary with SHA-256 before installing the `qodo-scout` command.
 They do not start a collection.
 
 ### macOS and Linux
@@ -22,8 +27,8 @@ They do not start a collection.
 rm -f ./install-qodo-scout.sh
 curl -fL --proto '=https' --proto-redir '=https' --tlsv1.2 \
   -o ./install-qodo-scout.sh \
-  https://get.qodo.ai/support-bundle/releases/0.3.1/install.sh &&
-  sh ./install-qodo-scout.sh --version 0.3.1 --add-to-path
+  https://get.qodo.ai/support-bundle/install.sh &&
+  sh ./install-qodo-scout.sh --add-to-path
 ```
 
 Use the installed command immediately in the same shell:
@@ -43,7 +48,7 @@ qodo-scout collect --interactive
 Run this in **Command Prompt (cmd.exe)**:
 
 ```bat
-curl.exe -fSLo "%TEMP%\install-qodo-scout.ps1" "https://get.qodo.ai/support-bundle/releases/0.3.1/install.ps1" && powershell.exe -NoProfile -File "%TEMP%\install-qodo-scout.ps1" -Version 0.3.1 -AddToPath
+curl.exe -fSLo "%TEMP%\install-qodo-scout.ps1" "https://get.qodo.ai/support-bundle/install.ps1" && powershell.exe -NoProfile -File "%TEMP%\install-qodo-scout.ps1" -AddToPath
 ```
 
 Use the installed command immediately in the same Command Prompt session:
@@ -58,6 +63,7 @@ Or open a new Command Prompt session and run:
 qodo-scout collect --interactive
 ```
 
+To pin a release, pass `--version` on macOS/Linux or `-Version` on Windows.
 For air-gapped installation, proxy behavior, provenance, and uninstall steps,
 see the [installer guide](docs/installers.md).
 

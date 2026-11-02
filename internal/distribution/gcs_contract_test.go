@@ -761,12 +761,27 @@ printf '%s|%s|%s|%s|%s\n' \
   "$method" "$url" "$content_type" "$cache_control" "$generation" >> "$FAKE_REQUESTS"
 case "$method" in
   PUT)
-    [ "$generation" = 0 ] || exit 22
-    [ ! -f "$path" ] || exit 22
+    [ "${FAKE_FAIL_OBJECT:-}" != "$relative" ] || exit 22
+    if [ "$relative" = qodo-cli-public/support-bundle/latest-version.txt ] &&
+      [ -n "${FAKE_RACE_LATEST_VERSION:-}" ]; then
+      printf '%s\n' "$FAKE_RACE_LATEST_VERSION" > "$path"
+      printf 'generation=2\ncontent_type=text/plain; charset=utf-8\ncache_control=no-store\n' > "$metadata"
+    fi
+    current_generation=0
+    if [ -f "$path" ]; then
+      current_generation=1
+      if [ -f "$metadata" ]; then
+        current_generation=$(awk -F= '$1 == "generation" { print $2 }' "$metadata")
+      fi
+    fi
+    if [ -n "$generation" ]; then
+      [ "$generation" = "$current_generation" ] || exit 22
+    fi
+    next_generation=$((current_generation + 1))
     mkdir -p "$(dirname "$path")"
     cp "$upload" "$path"
     {
-      printf 'generation=1\n'
+      printf 'generation=%s\n' "$next_generation"
       printf 'content_type=%s\n' "$content_type"
       printf 'cache_control=%s\n' "$cache_control"
     } > "$metadata"

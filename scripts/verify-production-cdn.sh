@@ -53,6 +53,17 @@ download_and_verify() {
   }
 }
 
+if [ "${1-}" = --latest ]; then
+  for filename in install.sh install.ps1; do
+    download_and_verify "$RELEASE_DIR/$filename" "$BASE_URL/$filename" \
+      'text/plain; charset=utf-8' no-store "$filename"
+  done
+  printf '%s\n' "$VERSION" > "$work/expected-version"
+  download_and_verify "$work/expected-version" "$BASE_URL/latest-version.txt" \
+    'text/plain; charset=utf-8' no-store latest-version.txt
+  exit 0
+fi
+
 immutable_cache='public, max-age=31536000, immutable'
 release_files | while IFS= read -r filename; do
   download_and_verify \
