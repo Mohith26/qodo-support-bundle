@@ -201,6 +201,7 @@ func TestCollectOmitsUsernameFromResolvedKubectlLog(t *testing.T) {
 }
 
 func TestCollectKeepsStdoutStableAndReportsQodoScoutStages(t *testing.T) {
+	useHomeOutsideTempDir(t)
 	root := t.TempDir()
 	kubectl := fakeKubectl(t, root, "")
 	output := filepath.Join(root, "bundle.tar.gz")
@@ -1193,6 +1194,19 @@ func TestKubernetesChildStagesFinishWithObservedOutcomes(t *testing.T) {
 	if output.String() != want {
 		t.Fatalf("child outcome transcript mismatch:\ngot:\n%s\nwant:\n%s", output.String(), want)
 	}
+}
+
+// useHomeOutsideTempDir points the home directory at a path that cannot
+// contain t.TempDir(). Without it, tests that compare "Bundle saved: <path>"
+// fail when TMPDIR lives under the real home directory, because the progress
+// output masks that prefix as "~".
+func useHomeOutsideTempDir(t *testing.T) {
+	t.Helper()
+	oldHome := homeDirectory
+	homeDirectory = func() (string, error) {
+		return filepath.Join(string(filepath.Separator), "qodo-scout-test-home"), nil
+	}
+	t.Cleanup(func() { homeDirectory = oldHome })
 }
 
 func TestProgressArchivePathMasksHomeDirectory(t *testing.T) {

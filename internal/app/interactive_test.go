@@ -136,6 +136,7 @@ func TestCollectInteractiveUsesFlagDefaultsAndCancelCreatesNoArchive(t *testing.
 }
 
 func TestCollectInteractiveShowsSingleFinalArchiveResult(t *testing.T) {
+	useHomeOutsideTempDir(t)
 	root := t.TempDir()
 	kubectl := fakeKubectl(t, root, "")
 	output := root + "/bundle.tar.gz"
